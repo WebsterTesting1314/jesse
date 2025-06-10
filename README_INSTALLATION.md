@@ -99,32 +99,10 @@ redis-cli ping
 
 ### 7. 创建环境配置文件
 
-在项目根目录创建 `.env` 文件：
+在项目根目录复制 `.env.example` 为 `.env`：
 
 ```bash
-cat > .env << 'EOF'
-# PostgreSQL Configuration
-POSTGRES_HOST=127.0.0.1
-POSTGRES_NAME=jesse_db
-POSTGRES_PORT=5432
-POSTGRES_USERNAME=jesse_user
-POSTGRES_PASSWORD=jessepwd123
-POSTGRES_SSLMODE=disable
-
-# Redis Configuration
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_PASSWORD=
-
-# Jesse Dashboard Configuration
-PASSWORD=JesseTrader2025
-APP_PORT=9000
-APP_HOST=0.0.0.0
-
-# Environment
-ENV=development
-EOF
+cp .env.example .env
 ```
 
 ### 8. 验证安装

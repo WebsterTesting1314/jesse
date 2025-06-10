@@ -35,10 +35,12 @@ pip3 --version
 ### 方法1: 使用安装脚本（推荐）
 
 ```bash
-# 下载并运行快速安装脚本
-curl -o quick-install.sh https://raw.githubusercontent.com/jesse-ai/jesse/master/scripts/quick-install.sh
-chmod +x quick-install.sh
-./quick-install.sh
+# 1. 克隆项目
+git clone https://github.com/jesse-ai/jesse.git
+cd jesse
+
+# 2. 执行快速安装脚本
+./scripts/quick-install.sh
 ```
 
 ### 方法2: 手动安装

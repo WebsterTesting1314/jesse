@@ -190,31 +190,14 @@ print_success "Jesse installed"
 
 # Create .env file if not exists
 if [ ! -f ".env" ]; then
-    print_info "Creating .env file..."
-    cat > .env << 'EOF'
-# PostgreSQL Configuration
-POSTGRES_HOST=127.0.0.1
-POSTGRES_NAME=jesse_db
-POSTGRES_PORT=5432
-POSTGRES_USERNAME=jesse_user
-POSTGRES_PASSWORD=jessepwd123
-POSTGRES_SSLMODE=disable
-
-# Redis Configuration
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_PASSWORD=
-
-# Jesse Dashboard Configuration
-PASSWORD=JesseTrader2025
-APP_PORT=9000
-APP_HOST=0.0.0.0
-
-# Environment
-ENV=development
-EOF
-    print_success ".env file created"
+    if [ -f ".env.example" ]; then
+        print_info "Copying .env.example to .env..."
+        cp .env.example .env
+        print_success ".env file created from .env.example"
+    else
+        print_error ".env.example not found. Please create one or see documentation."
+        exit 1
+    fi
 else
     print_success ".env file already exists"
 fi
