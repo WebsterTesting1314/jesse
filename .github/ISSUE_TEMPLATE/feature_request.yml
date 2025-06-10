@@ -1,0 +1,149 @@
+name: 🚀 Feature Request
+description: 建議新功能或改進
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感謝您的建議！請填寫以下信息以幫助我們理解您的需求。
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: 🚀 功能描述
+      description: 請清楚描述您希望的功能
+      placeholder: 我希望能夠...
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: 🎯 問題陳述
+      description: 這個功能要解決什麼問題？
+      placeholder: 目前的問題是...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: 💡 建議解決方案
+      description: 您對實現這個功能有什麼想法？
+      placeholder: 我認為可以通過...來實現
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 🔄 替代方案
+      description: 您考慮過其他替代解決方案嗎？
+      placeholder: 其他可能的解決方案包括...
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 🔧 相關組件
+      description: 這個功能主要涉及哪個組件？
+      options:
+        - Jesse 核心框架
+        - 智能合約
+        - DeFi MEV 擴展
+        - Web UI
+        - API
+        - CLI 工具
+        - 文檔
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 📊 優先級
+      description: 這個功能對您有多重要？
+      options:
+        - 低 - 有了更好，沒有也可以
+        - 中 - 對工作流程有幫助
+        - 高 - 對使用體驗很重要
+        - 緊急 - 缺少這個功能無法正常使用
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: 🛠️ 實現複雜度（估計）
+      description: 您認為實現這個功能的複雜度如何？
+      options:
+        - 簡單 - 小改動，幾行代碼
+        - 中等 - 需要一些開發工作
+        - 複雜 - 需要大量開發和測試
+        - 非常複雜 - 可能需要重構現有架構
+        - 不確定
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: 🎯 使用場景
+      description: 請描述具體的使用場景和用戶故事
+      placeholder: |
+        作為一個交易者，我希望...
+        作為一個開發者，我需要...
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: ✅ 驗收標準
+      description: 什麼情況下可以認為這個功能已完成？
+      placeholder: |
+        - [ ] 能夠做到...
+        - [ ] 支持...功能
+        - [ ] 有相應的測試
+        - [ ] 有文檔說明
+
+  - type: textarea
+    id: mockups
+    attributes:
+      label: 🎨 界面設計或流程圖
+      description: 如果涉及 UI 變更，請提供設計稿、線框圖或流程圖
+      placeholder: 您可以拖拽圖片到這裡，或提供設計說明...
+
+  - type: textarea
+    id: technical-considerations
+    attributes:
+      label: 🔧 技術考量
+      description: 實現這個功能需要考慮的技術問題
+      placeholder: |
+        - 性能影響
+        - 安全考量  
+        - 向後兼容性
+        - 依賴關係
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 📎 額外信息
+      description: 任何其他有助於理解需求的信息、參考資料或範例
+      placeholder: 相關資料、競品分析、學術論文等...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: ✅ 檢查清單
+      description: 請確認您已完成以下檢查
+      options:
+        - label: 我已搜索現有功能請求，確認這不是重複提案
+          required: true
+        - label: 我已閱讀項目文檔和路線圖
+          required: true
+        - label: 我已提供清楚的功能描述和使用場景
+          required: true
+        - label: 我理解這是一個開源項目，功能實現可能需要時間
+          required: true

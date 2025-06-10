@@ -1,0 +1,350 @@
+name: Release Management
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Is this a pre-release?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # 驗證發布條件
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+            IS_PRERELEASE="${{ inputs.prerelease }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+            if [[ "$VERSION" =~ -alpha|-beta|-rc ]]; then
+              IS_PRERELEASE=true
+            else
+              IS_PRERELEASE=false
+            fi
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "🏷️ Release version: $VERSION"
+          echo "🔖 Pre-release: $IS_PRERELEASE"
+      
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            echo "Expected format: v1.0.0 or v1.0.0-beta"
+            exit 1
+          fi
+          echo "✅ Version format is valid"
+      
+      - name: Check if tag exists
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "❌ Tag $VERSION already exists"
+            exit 1
+          fi
+          echo "✅ Tag $VERSION is available"
+
+  # 運行完整測試套件
+  test-suite:
+    name: Full Test Suite
+    uses: ./.github/workflows/ci.yml
+    needs: validate-release
+    secrets: inherit
+
+  # 構建發布包
+  build-packages:
+    name: Build Release Packages
+    runs-on: ubuntu-latest
+    needs: [validate-release, test-suite]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine setuptools wheel
+      
+      - name: Update version in files
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          # 移除 'v' 前綴用於 Python 版本
+          PYTHON_VERSION="${VERSION#v}"
+          
+          # 更新 Jesse 核心版本
+          sed -i "s/version = .*/version = '$PYTHON_VERSION'/" core/jesse/version.py
+          sed -i "s/version=.*/version='$PYTHON_VERSION',/" core/setup.py
+          
+          # 更新 DeFi MEV 版本
+          sed -i "s/version = .*/version = \"$PYTHON_VERSION\"/" jesse-defi-mev/pyproject.toml
+      
+      - name: Build Jesse core package
+        run: |
+          cd core
+          python -m build
+      
+      - name: Install Poetry for DeFi MEV
+        uses: snok/install-poetry@v1
+      
+      - name: Build DeFi MEV package
+        run: |
+          cd jesse-defi-mev
+          poetry build
+      
+      - name: Verify packages
+        run: |
+          twine check core/dist/*
+          twine check jesse-defi-mev/dist/*
+      
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-packages
+          path: |
+            core/dist/
+            jesse-defi-mev/dist/
+
+  # 構建 Docker 鏡像
+  build-docker:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [validate-release, test-suite]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            jesse/core
+            ghcr.io/${{ github.repository }}/core
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./core
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # 創建 GitHub Release
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-packages, build-docker]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: release-packages
+          path: ./packages
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          echo "## 🚀 What's New in $VERSION" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          
+          if [ -n "$PREV_TAG" ]; then
+            echo "### 📝 Changes since $PREV_TAG" >> CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> CHANGELOG.md
+          else
+            echo "### 📝 Initial Release" >> CHANGELOG.md
+            git log --pretty=format:"- %s (%h)" >> CHANGELOG.md
+          fi
+          
+          echo "" >> CHANGELOG.md
+          echo "### 📦 Assets" >> CHANGELOG.md
+          echo "- \`jesse-core-*.whl\`: Jesse 核心交易框架" >> CHANGELOG.md
+          echo "- \`jesse-defi-mev-*.whl\`: DeFi/MEV 擴展模組" >> CHANGELOG.md
+          echo "- \`*.tar.gz\`: 源碼包" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "### 🐳 Docker Images" >> CHANGELOG.md
+          echo "- \`jesse/core:$VERSION\`" >> CHANGELOG.md
+          echo "- \`ghcr.io/${{ github.repository }}/core:$VERSION\`" >> CHANGELOG.md
+          
+          # 設置 output 用於後續步驟
+          {
+            echo "changelog<<EOF"
+            cat CHANGELOG.md
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+      
+      - name: Create Git tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.validate-release.outputs.version }}
+          name: ${{ needs.validate-release.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          prerelease: ${{ needs.validate-release.outputs.is-prerelease }}
+          files: |
+            packages/core/dist/*
+            packages/jesse-defi-mev/dist/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 發布到 PyPI
+  publish-pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release]
+    if: ${{ !fromJSON(needs.validate-release.outputs.is-prerelease) }}
+    environment: pypi
+    
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: release-packages
+          path: ./packages
+      
+      - name: Publish Jesse Core to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: packages/core/dist/
+      
+      - name: Publish DeFi MEV to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN_DEFI }}
+          packages-dir: packages/jesse-defi-mev/dist/
+
+  # 部署文檔
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install docs dependencies
+        run: |
+          pip install mkdocs mkdocs-material mkdocs-mermaid2-plugin
+      
+      - name: Build documentation
+        run: |
+          mkdocs build
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+
+  # 通知發布成功
+  notify-release:
+    name: Release Notification
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release, publish-pypi, deploy-docs]
+    if: always()
+    
+    steps:
+      - name: Send success notification
+        if: success()
+        run: |
+          VERSION="${{ needs.validate-release.outputs.version }}"
+          echo "🎉 Successfully released Jesse $VERSION!"
+          echo "📦 PyPI: https://pypi.org/project/jesse/"
+          echo "🐳 Docker: jesse/core:$VERSION"
+          echo "📚 Docs: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          # 可以添加 Slack/Discord/Email 通知
+      
+      - name: Send failure notification
+        if: failure()
+        run: |
+          echo "❌ Release process failed!"
+          # 可以添加 Slack/Discord/Email 通知

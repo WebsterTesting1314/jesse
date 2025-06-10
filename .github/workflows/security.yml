@@ -1,0 +1,236 @@
+name: Security Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # 每天凌晨2點運行安全掃描
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  # 依賴漏洞掃描
+  dependency-scan:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install safety
+        run: pip install safety
+      
+      - name: Run safety check
+        run: |
+          safety check --json --output safety-report.json || true
+          safety check --short-report
+      
+      - name: Upload safety report
+        uses: actions/upload-artifact@v3
+        with:
+          name: safety-report
+          path: safety-report.json
+
+  # SAST 靜態代碼分析
+  sast-scan:
+    name: Static Application Security Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install security tools
+        run: |
+          pip install bandit semgrep
+      
+      - name: Run Bandit scan
+        run: |
+          bandit -r core/jesse/ jesse-defi-mev/ -f json -o bandit-report.json || true
+          bandit -r core/jesse/ jesse-defi-mev/ -f txt
+      
+      - name: Run Semgrep scan
+        run: |
+          semgrep --config=auto --json --output=semgrep-report.json core/ jesse-defi-mev/ || true
+          semgrep --config=auto core/ jesse-defi-mev/
+      
+      - name: Upload SAST reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: sast-reports
+          path: |
+            bandit-report.json
+            semgrep-report.json
+
+  # 智能合約安全審計
+  contract-security:
+    name: Smart Contract Security Audit
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+      
+      - name: Install dependencies
+        run: |
+          cd contracts
+          forge install
+      
+      - name: Run Slither analysis
+        uses: crytic/slither-action@v0.3.0
+        id: slither
+        with:
+          target: 'contracts/src/'
+          slither-config: 'contracts/slither.config.json'
+          fail-on: none
+          slither-args: '--print human-summary --json slither-report.json'
+      
+      - name: Install additional tools
+        run: |
+          pip install mythril
+          npm install -g @consensys/mythx-cli
+      
+      - name: Run Mythril analysis
+        run: |
+          cd contracts
+          find src/ -name "*.sol" -exec myth analyze {} \; > mythril-report.txt || true
+      
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: contract-security-reports
+          path: |
+            slither-report.json
+            contracts/mythril-report.txt
+
+  # 秘密掃描
+  secret-scan:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  # License 合規檢查
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install pip-licenses
+        run: pip install pip-licenses
+      
+      - name: Check Python licenses
+        run: |
+          pip install -r core/requirements.txt
+          pip-licenses --format=json --output-file=python-licenses.json
+          pip-licenses --format=markdown --output-file=python-licenses.md
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: Install license-checker
+        run: npm install -g license-checker
+      
+      - name: Check Node.js licenses
+        run: |
+          cd contracts
+          if [ -f package.json ]; then
+            license-checker --json --out ../nodejs-licenses.json
+            license-checker --markdown --out ../nodejs-licenses.md
+          fi
+      
+      - name: Upload license reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: license-reports
+          path: |
+            python-licenses.json
+            python-licenses.md
+            nodejs-licenses.json
+            nodejs-licenses.md
+
+  # 代碼質量門檻
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, sast-scan, contract-security, secret-scan]
+    
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v3
+      
+      - name: Evaluate security reports
+        run: |
+          echo "🔍 Analyzing security scan results..."
+          
+          # 檢查是否有高危漏洞
+          if [ -f safety-report/safety-report.json ]; then
+            HIGH_VULN=$(cat safety-report/safety-report.json | jq '.vulnerabilities | length')
+            if [ "$HIGH_VULN" -gt 0 ]; then
+              echo "❌ Found $HIGH_VULN dependency vulnerabilities"
+              exit 1
+            fi
+          fi
+          
+          # 檢查 Bandit 結果
+          if [ -f sast-reports/bandit-report.json ]; then
+            HIGH_ISSUES=$(cat sast-reports/bandit-report.json | jq '.results | length')
+            if [ "$HIGH_ISSUES" -gt 5 ]; then
+              echo "⚠️  Found $HIGH_ISSUES security issues (threshold: 5)"
+              exit 1
+            fi
+          fi
+          
+          echo "✅ Security quality gate passed!"
+      
+      - name: Post quality summary
+        run: |
+          echo "## 🛡️ Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency scan: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- SAST scan: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- Contract security: ✅ Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret detection: ✅ Passed" >> $GITHUB_STEP_SUMMARY

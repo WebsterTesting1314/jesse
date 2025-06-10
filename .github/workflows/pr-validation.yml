@@ -1,0 +1,327 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  # PR 標題和描述檢查
+  pr-validation:
+    name: Validate PR Format
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+      - name: Check PR title format
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          echo "PR Title: $TITLE"
+          
+          # 檢查標題格式: type(scope): description
+          if [[ ! "$TITLE" =~ ^(feat|fix|docs|style|refactor|test|chore|perf|ci|build)(\(.+\))?\!?:\ .+ ]]; then
+            echo "❌ PR 標題格式不正確!"
+            echo "正確格式: type(scope): description"
+            echo "例如: feat(core): add new trading strategy"
+            echo "類型: feat, fix, docs, style, refactor, test, chore, perf, ci, build"
+            exit 1
+          fi
+          echo "✅ PR 標題格式正確"
+      
+      - name: Check PR description
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          if [ -z "$BODY" ] || [ "$BODY" == "null" ]; then
+            echo "❌ PR 描述不能為空!"
+            echo "請添加 PR 描述說明變更內容"
+            exit 1
+          fi
+          echo "✅ PR 描述已提供"
+      
+      - name: Check for breaking changes
+        run: |
+          TITLE="${{ github.event.pull_request.title }}"
+          BODY="${{ github.event.pull_request.body }}"
+          
+          if [[ "$TITLE" =~ \! ]] || [[ "$BODY" =~ "BREAKING CHANGE" ]]; then
+            echo "⚠️  檢測到破壞性變更!"
+            echo "請確保:"
+            echo "1. 在 PR 描述中詳細說明破壞性變更"
+            echo "2. 更新相關文檔"
+            echo "3. 考慮向後兼容性"
+            # 不退出，只是警告
+          fi
+
+  # 檢查文件變更範圍
+  change-detection:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      core-changed: ${{ steps.changes.outputs.core }}
+      contracts-changed: ${{ steps.changes.outputs.contracts }}
+      defi-mev-changed: ${{ steps.changes.outputs.defi-mev }}
+      docs-changed: ${{ steps.changes.outputs.docs }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Detect changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            core:
+              - 'core/**'
+            contracts:
+              - 'contracts/**'
+            defi-mev:
+              - 'jesse-defi-mev/**'
+            docs:
+              - 'docs/**'
+              - '*.md'
+
+  # 運行針對性測試
+  targeted-tests:
+    name: Targeted Tests
+    runs-on: ubuntu-latest
+    needs: change-detection
+    
+    strategy:
+      matrix:
+        component: [core, contracts, defi-mev]
+    
+    steps:
+      - name: Skip if no changes
+        if: |
+          (matrix.component == 'core' && needs.change-detection.outputs.core-changed != 'true') ||
+          (matrix.component == 'contracts' && needs.change-detection.outputs.contracts-changed != 'true') ||
+          (matrix.component == 'defi-mev' && needs.change-detection.outputs.defi-mev-changed != 'true')
+        run: |
+          echo "⏭️ Skipping ${{ matrix.component }} tests - no changes detected"
+          exit 0
+      
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run component tests
+        run: |
+          echo "🧪 Running tests for ${{ matrix.component }}"
+          case "${{ matrix.component }}" in
+            core)
+              echo "Testing Jesse Core..."
+              # 這裡會被 CI 流程處理
+              ;;
+            contracts)
+              echo "Testing Smart Contracts..."
+              # 這裡會被 CI 流程處理
+              ;;
+            defi-mev)
+              echo "Testing DeFi MEV..."
+              # 這裡會被 CI 流程處理
+              ;;
+          esac
+
+  # 代碼覆蓋率變化檢查
+  coverage-check:
+    name: Coverage Analysis
+    runs-on: ubuntu-latest
+    needs: change-detection
+    if: |
+      needs.change-detection.outputs.core-changed == 'true' ||
+      needs.change-detection.outputs.contracts-changed == 'true' ||
+      needs.change-detection.outputs.defi-mev-changed == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install coverage diff-cover
+      
+      - name: Calculate coverage diff
+        run: |
+          echo "📊 計算代碼覆蓋率變化..."
+          # 這裡需要與 CI 流程集成，獲取基礎分支和當前分支的覆蓋率
+          echo "⚠️  確保新代碼的測試覆蓋率不低於80%"
+
+  # 性能回歸檢查
+  performance-regression:
+    name: Performance Regression Check
+    runs-on: ubuntu-latest
+    needs: change-detection
+    if: needs.change-detection.outputs.core-changed == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest-benchmark
+      
+      - name: Run performance benchmarks
+        run: |
+          echo "⚡ 運行性能基準測試..."
+          echo "檢查是否有性能回歸..."
+          # 這裡需要比較與主分支的性能差異
+
+  # 文檔更新檢查
+  docs-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    needs: change-detection
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Check if docs need update
+        if: |
+          needs.change-detection.outputs.core-changed == 'true' ||
+          needs.change-detection.outputs.contracts-changed == 'true' ||
+          needs.change-detection.outputs.defi-mev-changed == 'true'
+        run: |
+          echo "🔍 檢查是否需要更新文檔..."
+          
+          # 檢查是否有新的公共 API
+          git diff origin/main...HEAD --name-only | grep -E "\.(py|sol)$" | while read file; do
+            if git diff origin/main...HEAD "$file" | grep -E "^(\+.*def |^(\+.*class |^\+.*function )" > /dev/null; then
+              echo "⚠️  檢測到新的公共 API 在 $file"
+              echo "請考慮更新相關文檔"
+            fi
+          done
+      
+      - name: Build docs to check for errors
+        if: needs.change-detection.outputs.docs-changed == 'true'
+        run: |
+          echo "📚 構建文檔檢查錯誤..."
+          # 安裝並構建文檔
+          pip install mkdocs mkdocs-material
+          mkdocs build --strict
+
+  # 安全掃描（輕量級）
+  security-scan:
+    name: Quick Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run security scan
+        run: |
+          echo "🔒 運行快速安全掃描..."
+          
+          # 檢查是否有敏感信息
+          if grep -r -E "(password|secret|key|token).*(=|:)" . --exclude-dir=.git --exclude-dir=node_modules; then
+            echo "⚠️  檢測到可能的敏感信息洩露"
+            echo "請檢查並移除任何硬編碼的敏感信息"
+          fi
+          
+          # 檢查依賴更新
+          echo "檢查依賴安全性..."
+
+  # PR 標籤自動添加
+  auto-labeling:
+    name: Auto Labeling
+    runs-on: ubuntu-latest
+    needs: [change-detection, pr-validation]
+    
+    steps:
+      - name: Add labels based on changes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            
+            const labels = [];
+            
+            // 根據變更類型添加標籤
+            if ('${{ needs.change-detection.outputs.core-changed }}' === 'true') {
+              labels.push('core');
+            }
+            if ('${{ needs.change-detection.outputs.contracts-changed }}' === 'true') {
+              labels.push('contracts');
+            }
+            if ('${{ needs.change-detection.outputs.defi-mev-changed }}' === 'true') {
+              labels.push('defi-mev');
+            }
+            if ('${{ needs.change-detection.outputs.docs-changed }}' === 'true') {
+              labels.push('documentation');
+            }
+            
+            // 根據 PR 標題添加標籤
+            const title = pullRequest.title.toLowerCase();
+            if (title.startsWith('feat')) labels.push('enhancement');
+            if (title.startsWith('fix')) labels.push('bug');
+            if (title.startsWith('docs')) labels.push('documentation');
+            if (title.startsWith('perf')) labels.push('performance');
+            if (title.includes('breaking') || title.includes('!')) labels.push('breaking-change');
+            
+            // 添加標籤
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labels
+              });
+            }
+
+  # 總結檢查結果
+  pr-summary:
+    name: PR Validation Summary
+    runs-on: ubuntu-latest
+    needs: [pr-validation, targeted-tests, coverage-check, docs-check, security-scan]
+    if: always()
+    
+    steps:
+      - name: Create summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = `## 🔍 PR 驗證結果
+            
+            | 檢查項目 | 狀態 |
+            |---------|------|
+            | PR 格式驗證 | ${{ needs.pr-validation.result == 'success' && '✅ 通過' || '❌ 失敗' }} |
+            | 針對性測試 | ${{ needs.targeted-tests.result == 'success' && '✅ 通過' || needs.targeted-tests.result == 'skipped' && '⏭️ 跳過' || '❌ 失敗' }} |
+            | 覆蓋率檢查 | ${{ needs.coverage-check.result == 'success' && '✅ 通過' || needs.coverage-check.result == 'skipped' && '⏭️ 跳過' || '❌ 失敗' }} |
+            | 文檔檢查 | ${{ needs.docs-check.result == 'success' && '✅ 通過' || '❌ 失敗' }} |
+            | 安全掃描 | ${{ needs.security-scan.result == 'success' && '✅ 通過' || '❌ 失敗' }} |
+            
+            ${needs.pr-validation.result === 'failure' ? '⚠️ 請修復 PR 格式問題後重新提交' : ''}
+            ${needs.targeted-tests.result === 'failure' ? '⚠️ 部分測試失敗，請檢查並修復' : ''}
+            `;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary
+            });

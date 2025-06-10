@@ -1,0 +1,149 @@
+name: Auto Merge
+
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, opened, edited, ready_for_review, reopened]
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
+  status: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+jobs:
+  auto-merge:
+    name: Auto Merge
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.draft == false &&
+      (
+        contains(github.event.pull_request.labels.*.name, 'auto-merge') ||
+        contains(github.event.pull_request.labels.*.name, 'dependencies')
+      )
+    
+    steps:
+      - name: Check PR requirements
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            
+            // 檢查基本要求
+            const requirements = {
+              hasDescription: pullRequest.body && pullRequest.body.trim().length > 0,
+              notDraft: !pullRequest.draft,
+              hasValidTitle: /^(feat|fix|docs|style|refactor|test|chore|perf|ci|build)(\(.+\))?\!?:\ .+/.test(pullRequest.title),
+              targetBranch: ['main', 'develop'].includes(pullRequest.base.ref)
+            };
+            
+            // 檢查標籤
+            const labels = pullRequest.labels.map(label => label.name);
+            const hasAutoMergeLabel = labels.includes('auto-merge') || labels.includes('dependencies');
+            
+            // 檢查審查狀態
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            
+            const latestReviews = {};
+            reviews.forEach(review => {
+              latestReviews[review.user.login] = review.state;
+            });
+            
+            const approvedReviews = Object.values(latestReviews).filter(state => state === 'APPROVED').length;
+            const requestedChanges = Object.values(latestReviews).filter(state => state === 'CHANGES_REQUESTED').length;
+            
+            // 檢查 CI 狀態
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: pullRequest.head.sha
+            });
+            
+            const requiredChecks = ['Continuous Integration'];
+            const passedChecks = checks.check_runs.filter(check => 
+              requiredChecks.includes(check.name) && check.conclusion === 'success'
+            ).length;
+            
+            // 決定是否可以自動合併
+            const canAutoMerge = 
+              requirements.hasDescription &&
+              requirements.notDraft &&
+              requirements.hasValidTitle &&
+              requirements.targetBranch &&
+              hasAutoMergeLabel &&
+              approvedReviews >= 1 &&
+              requestedChanges === 0 &&
+              passedChecks === requiredChecks.length;
+            
+            console.log('Auto-merge check results:', {
+              requirements,
+              hasAutoMergeLabel,
+              approvedReviews,
+              requestedChanges,
+              passedChecks,
+              canAutoMerge
+            });
+            
+            if (canAutoMerge) {
+              // 自動合併
+              try {
+                await github.rest.pulls.merge({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.issue.number,
+                  commit_title: pullRequest.title,
+                  commit_message: `Auto-merged PR #${context.issue.number}`,
+                  merge_method: labels.includes('dependencies') ? 'squash' : 'merge'
+                });
+                
+                console.log('✅ PR auto-merged successfully');
+                
+                // 添加評論
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: '🤖 This PR has been automatically merged as it meets all requirements.'
+                });
+                
+              } catch (error) {
+                console.log('❌ Auto-merge failed:', error.message);
+                
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: `❌ Auto-merge failed: ${error.message}`
+                });
+              }
+            } else {
+              console.log('⏳ PR not ready for auto-merge');
+              
+              // 提供反饋
+              const feedback = [];
+              if (!requirements.hasDescription) feedback.push('- Missing PR description');
+              if (!requirements.hasValidTitle) feedback.push('- Invalid PR title format');
+              if (approvedReviews < 1) feedback.push('- Needs at least 1 approval');
+              if (requestedChanges > 0) feedback.push('- Has requested changes');
+              if (passedChecks < requiredChecks.length) feedback.push('- CI checks not passing');
+              
+              if (feedback.length > 0) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: `🤖 Auto-merge requirements not met:\n\n${feedback.join('\n')}`
+                });
+              }
+            }
