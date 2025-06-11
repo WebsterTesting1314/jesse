@@ -9,6 +9,9 @@ on:
       - 'core/jesse/indicators/hft_*.py'
       - 'core/tests/test_hft_*.py'
       - 'core/tests/test_mvp_*.py'
+      - '.github/workflows/hft-system-ci.yml'
+      - 'PROJECT_ROADMAP.md'
+      - 'MVP_GUIDE.md'
   pull_request:
     branches: [ master, develop ]
     paths:
