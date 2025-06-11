@@ -21,7 +21,15 @@
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
       "Bash(git submodule:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(find:*)",
+      "Bash(jesse:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(python scripts/monitor_github_actions.py:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)"
     ],
     "deny": []
   }
