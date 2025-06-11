@@ -19,7 +19,9 @@
       "Bash(sudo:*)",
       "Bash(redis-cli:*)",
       "Bash(mkdir:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(git submodule:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }
