@@ -1,0 +1,51 @@
+name: HFT Test Simple
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  hft-check:
+    name: HFT Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Check HFT files
+        run: |
+          echo "Checking HFT system files..."
+          
+          echo "HFT Service files:"
+          find core/jesse/services -name "hft_*.py" -type f | head -10
+          
+          echo "HFT Indicator files:"
+          find core/jesse/indicators -name "hft_*.py" -type f | head -5
+          
+          echo "HFT Store files:"
+          find core/jesse/store -name "hft_*.py" -type f | head -5
+          
+          echo "HFT system files check completed"
+      
+      - name: Python syntax check
+        run: |
+          echo "Checking Python syntax..."
+          
+          pip install --upgrade pip
+          
+          echo "Checking HFT service files syntax:"
+          for file in core/jesse/services/hft_*.py; do
+            if [ -f "$file" ]; then
+              echo "  Checking: $file"
+              python -m py_compile "$file"
+            fi
+          done
+          
+          echo "Syntax check completed"
