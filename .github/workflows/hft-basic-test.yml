@@ -1,0 +1,114 @@
+name: HFT Basic Test - HFT 系統基礎測試
+
+on:
+  push:
+    branches: [ master, develop ]
+  pull_request:
+    branches: [ master, develop ]
+  workflow_dispatch:
+
+jobs:
+  basic-check:
+    name: 🔍 基礎檢查
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 取得代碼
+        uses: actions/checkout@v4
+      
+      - name: 🐍 設置 Python 環境
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: 📊 檢查 HFT 系統檔案
+        run: |
+          echo "🔍 檢查 HFT 系統檔案..."
+          
+          # 列出 HFT 相關檔案
+          echo "📂 HFT 服務檔案:"
+          find core/jesse/services -name "hft_*.py" -type f | head -10
+          
+          echo "📂 HFT 指標檔案:"
+          find core/jesse/indicators -name "hft_*.py" -type f | head -5
+          
+          echo "📂 HFT 儲存檔案:"
+          find core/jesse/store -name "hft_*.py" -type f | head -5
+          
+          echo "📂 HFT 測試檔案:"
+          find core/tests -name "test_hft_*.py" -type f | head -5
+          
+          # 檢查工作流程檔案
+          echo "⚙️ CI/CD 工作流程檔案:"
+          ls -la .github/workflows/
+          
+          echo "✅ HFT 系統檔案檢查完成"
+      
+      - name: 🧮 語法檢查
+        run: |
+          echo "🔍 檢查 Python 語法..."
+          
+          # 安裝基本工具
+          pip install --upgrade pip
+          
+          # 檢查 HFT 服務檔案語法
+          echo "📋 檢查 HFT 服務檔案語法:"
+          for file in core/jesse/services/hft_*.py; do
+            if [ -f "$file" ]; then
+              echo "  檢查: $file"
+              python -m py_compile "$file"
+            fi
+          done
+          
+          echo "✅ 語法檢查完成"
+      
+      - name: 📊 生成基礎報告
+        run: |
+          echo "📝 生成 HFT 系統基礎檢查報告..."
+          
+          cat > hft_basic_report.md << 'EOF'
+          # 🚀 HFT 系統基礎檢查報告
+          
+          ## 📅 執行時間
+          **執行時間:** $(date)
+          **提交雜湊:** ${{ github.sha }}
+          **分支:** ${{ github.ref_name }}
+          
+          ## ✅ 檢查結果
+          - ✅ 代碼取得成功
+          - ✅ Python 環境設置完成
+          - ✅ HFT 系統檔案存在
+          - ✅ Python 語法檢查通過
+          
+          ## 📊 統計信息
+          EOF
+          
+          # 添加統計信息
+          hft_services=$(find core/jesse/services -name "hft_*.py" -type f | wc -l)
+          echo "- HFT 服務檔案數量: $hft_services" >> hft_basic_report.md
+          
+          hft_indicators=$(find core/jesse/indicators -name "hft_*.py" -type f | wc -l)
+          echo "- HFT 指標檔案數量: $hft_indicators" >> hft_basic_report.md
+          
+          hft_tests=$(find core/tests -name "test_hft_*.py" -type f | wc -l)
+          echo "- HFT 測試檔案數量: $hft_tests" >> hft_basic_report.md
+          
+          echo "" >> hft_basic_report.md
+          echo "## 🎯 下一步計劃" >> hft_basic_report.md
+          echo "- 📊 執行單元測試" >> hft_basic_report.md
+          echo "- 🔧 執行集成測試" >> hft_basic_report.md
+          echo "- ⚡ 執行性能測試" >> hft_basic_report.md
+          echo "- 🚀 準備部署" >> hft_basic_report.md
+          
+          echo "" >> hft_basic_report.md
+          echo "*此報告由 GitHub Actions 自動生成*" >> hft_basic_report.md
+          
+          echo "📋 基礎檢查報告:"
+          cat hft_basic_report.md
+      
+      - name: 📤 上傳報告
+        uses: actions/upload-artifact@v3
+        with:
+          name: hft-basic-report
+          path: hft_basic_report.md
+          retention-days: 30

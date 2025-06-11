@@ -58,7 +58,7 @@ jobs:
       - name: 🐍 設置 Python 環境
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.12'
           cache: 'pip'
       
       - name: 📦 安裝代碼品質工具
@@ -178,7 +178,7 @@ jobs:
       - name: 🐍 設置 Python 環境
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.12'
           cache: 'pip'
       
       - name: 🔧 安裝系統依賴
@@ -275,7 +275,7 @@ jobs:
       - name: 🐍 設置 Python 環境
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.12'
       
       - name: 📦 安裝性能測試工具
         run: |
@@ -487,7 +487,7 @@ jobs:
       - name: 🐍 設置 Python 環境
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.12'
       
       - name: 📦 安裝依賴
         run: |
@@ -705,7 +705,7 @@ jobs:
       - name: 🐍 設置 Python 環境
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: '3.12'
       
       - name: 📦 構建 Jesse HFT 包
         run: |
