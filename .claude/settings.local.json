@@ -29,7 +29,8 @@
       "Bash(git push:*)",
       "Bash(python scripts/monitor_github_actions.py:*)",
       "Bash(git pull:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(touch:*)"
     ],
     "deny": []
   }
