@@ -1,0 +1,17 @@
+{
+  "project": {
+    "name": "jesse",
+    "description": "Jesse trading bot project",
+    "version": "1.0.0"
+  },
+  "models": {
+    "main": "claude-3-5-sonnet-20241022",
+    "research": "claude-3-5-sonnet-20241022",
+    "fallback": "claude-3-5-sonnet-20241022"
+  },
+  "settings": {
+    "maxTokens": 4000,
+    "temperature": 0.7,
+    "enableResearch": true
+  }
+} 
