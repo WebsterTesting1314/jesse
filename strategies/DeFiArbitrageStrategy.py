@@ -5,6 +5,7 @@ with MEV protection, flash loans, and multi-chain support
 """
 
 import asyncio
+import os
 import time
 from typing import Dict, List, Optional, Tuple, Any
 from decimal import Decimal
@@ -110,10 +111,13 @@ class DeFiArbitrageStrategy(Strategy):
     async def _initialize_services(self):
         """Initialize all required services"""
         try:
-            # Initialize mempool monitor
+            # Initialize mempool monitor using Alchemy API key from env
+            alchemy_api_key = os.getenv("ALCHEMY_API_KEY")
+            if not alchemy_api_key:
+                raise RuntimeError("ALCHEMY_API_KEY not set in environment")
             self.mempool_monitor = initialize_mempool_monitor(
-                web3_provider="https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY",
-                chain_id=1,  # Ethereum mainnet
+                web3_provider=f"https://eth-mainnet.g.alchemy.com/v2/{alchemy_api_key}",
+                chain_id=1,
                 monitor_interval=0.1
             )
             
@@ -125,14 +129,20 @@ class DeFiArbitrageStrategy(Strategy):
                 update_interval=0.1
             )
             
-            # Initialize Web3 clients for each chain
+            # Initialize Web3 clients for each chain using env vars
             for chain in self.vars['chains']:
-                # You would replace these with actual private keys and RPC URLs
+                private_key = os.getenv(f"PRIVATE_KEY_{chain.name}")
+                api_key = os.getenv(f"API_KEY_{chain.name}")
+                rpc_url = os.getenv(f"RPC_URL_{chain.name}", self._get_rpc_url(chain))
+                if not private_key or not api_key:
+                    raise RuntimeError(
+                        f"Env vars PRIVATE_KEY_{chain.name} and API_KEY_{chain.name} must be set"
+                    )
                 self.web3_clients[chain] = get_web3_client(
                     chain_id=chain,
-                    private_key="YOUR_PRIVATE_KEY",  # In production, use secure key management
-                    custom_rpc_url=self._get_rpc_url(chain),
-                    api_key="YOUR_API_KEY"
+                    private_key=private_key,
+                    custom_rpc_url=rpc_url,
+                    api_key=api_key
                 )
             
             # Start services
@@ -150,7 +160,7 @@ class DeFiArbitrageStrategy(Strategy):
     
     def _get_rpc_url(self, chain: ChainId) -> str:
         """Get RPC URL for a specific chain"""
-        # In production, use environment variables or secure config
+        # Fallback RPC URLs; can be overridden via RPC_URL_<CHAIN_NAME> env var
         rpc_urls = {
             ChainId.ETHEREUM: "https://eth-mainnet.g.alchemy.com/v2/",
             ChainId.BSC: "https://bsc-dataseed.binance.org/",
