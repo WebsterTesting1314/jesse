@@ -53,6 +53,7 @@ class DeFiArbitrageStrategy(Strategy):
         # Strategy configuration
         self.vars['chains'] = [ChainId.ETHEREUM, ChainId.BSC, ChainId.POLYGON]
         self.vars['min_profit_bps'] = 50  # 0.5% minimum profit
+        self.vars['min_profit_usd'] = 50  # $50 minimum profit in USD for extra validation
         self.vars['max_price_impact'] = 0.03  # 3% max price impact
         self.vars['max_slippage'] = 0.03  # 3% max slippage
         self.vars['min_liquidity_usd'] = 50000  # $50k minimum liquidity
@@ -281,9 +282,18 @@ class DeFiArbitrageStrategy(Strategy):
             )
             
             net_profit = float(opportunity.expected_profit) - gas_cost_usd
-            if net_profit < 50:  # Minimum $50 profit
+            if net_profit < self.vars['min_profit_usd']:
                 return False
-            
+
+            # Final on-chain simulation to guard against stale AI predictions
+            try:
+                if hasattr(self.arbitrage_detector, 'simulate'):
+                    sim_profit = await self.arbitrage_detector.simulate(opportunity)
+                    if sim_profit < self.vars['min_profit_usd']:
+                        return False
+            except Exception as e:
+                logger.warning(f"Simulation check failed: {e}")
+
             return True
             
         except Exception as e:
