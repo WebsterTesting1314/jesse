@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@vectorize-io/vectorize-client": "^0.2.1"
+  }
+}
