@@ -1,0 +1,7 @@
+pre-commit
+pytest
+pytest-benchmark
+isort
+flake8
+mypy
+markdownlint-cli

@@ -1,5 +1,14 @@
 {
   "dependencies": {
     "@vectorize-io/vectorize-client": "^0.2.1"
+  },
+  "devDependencies": {
+    "solhint": "^3.5.0",
+    "@antora/cli": "3.0.3",
+    "@antora/site-generator-default": "3.0.3"
+  },
+  "scripts": {
+    "lint:solidity": "solhint \"contracts/**/*.sol\"",
+    "docs": "antora contracts/lib/openzeppelin-contracts/docs/antora.yml"
   }
 }
